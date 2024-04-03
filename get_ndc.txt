@@ -1,0 +1,51 @@
+/* Get NDC codes by therapeutic class description with optional drug name */
+/* Final data set generated is called "ndc" */
+/* Enter in a part of the therapeutic class description you want to index after "thc=" */
+/* Enter in a part of the drug name you want to index after "dg=" */
+
+%macro get_ndc(thc=, dg=);
+
+	proc sql noprint;
+		select cats('MS.', memname)
+		into :rb separated by ' '
+		from dictionary.tables
+		where libname='MS'
+		and index(memname, 'REDBOOK');
+	quit;
+	
+	%let m=%sysfunc(countw("&rb", 'MS', k));
+	%let thc=%sysfunc(upcase(&thc));
+	%if &dg ^= %then %do;
+		%let dg=%sysfunc(upcase(&dg));
+		%let n=%sysfunc(countw("&dg"));
+	%end;
+
+	%do j=1 %to &m;
+
+		data ndc_&j;
+			set %scan(&rb, &j, ' ') (keep=ndcnum thrclds gennme);
+			where index(upcase(thrclds), "&thc") %if &dg ^= %then %do; and (
+			%do i=1 %to &n;
+				%if &i=&n %then %do;
+					index(upcase(gennme), "%scan(&dg, &i, ' ')")
+				%end;
+				%else %do;
+					index(upcase(gennme), "%scan(&dg, &i, ' ')") or
+				%end;
+			%end;
+			)%end;
+			;
+		run;
+
+	%end;
+
+	data ndc_comb;
+		set %do k=1 %to &m; ndc_&k %end;
+		;
+	run;
+
+	proc sort data=ndc_comb out=ndc nodupkey;
+		by ndcnum;
+	run;
+
+%mend get_ndc;
